@@ -1,0 +1,2578 @@
+--========================================================--
+--              LTDC FLOAT UI - V3 FIX
+--          ANDROID / TOUCH / DELTA EXECUTOR
+--========================================================--
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local Stats = game:GetService("Stats")
+
+local player = Players.LocalPlayer
+
+--========================================================--
+-- GUI PARENT SEGURO
+--========================================================--
+
+local GUI_PARENT
+
+pcall(function()
+	if gethui then
+		GUI_PARENT = gethui()
+	end
+end)
+
+if not GUI_PARENT then
+	GUI_PARENT = game:GetService("CoreGui")
+end
+
+--========================================================--
+-- ELIMINAR VERSIONES ANTERIORES
+--========================================================--
+
+pcall(function()
+
+	local old = GUI_PARENT:FindFirstChild("LTDC_UI_V3")
+
+	if old then
+		old:Destroy()
+	end
+
+	local old2 = GUI_PARENT:FindFirstChild("LTDC_STATS")
+
+	if old2 then
+		old2:Destroy()
+	end
+
+end)
+
+--========================================================--
+-- GUI PRINCIPAL
+--========================================================--
+
+local gui = Instance.new("ScreenGui")
+
+gui.Name = "LTDC_UI_V3"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.DisplayOrder = 999999
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+gui.Parent = GUI_PARENT
+
+--========================================================--
+-- ESTADOS
+--========================================================--
+
+local states = {}
+
+local toggleButtons = {}
+local toggleCallbacks = {}
+
+local originalLighting = {}
+local originalEffects = {}
+
+local hiddenClothes = {}
+local hiddenWorld = {}
+
+local characterEffects = {}
+local npcEffects = {}
+
+local audioObjects = {}
+local vegetationObjects = {}
+
+local uiScales = {}
+
+local connections = {}
+
+local fpsGui
+local fpsBox
+local pingBox
+
+local fpsConnection
+local pingThread
+
+local frameCount = 0
+local lastFPSTime = tick()
+local currentFPS = 0
+
+local allOptionsEnabled = false
+
+--========================================================--
+-- FUNCIONES SEGURAS
+--========================================================--
+
+local function safeSet(obj, property, value)
+
+	pcall(function()
+		obj[property] = value
+	end)
+
+end
+
+
+local function disconnect(name)
+
+	if connections[name] then
+
+		connections[name]:Disconnect()
+		connections[name] = nil
+
+	end
+
+end
+
+
+local function getCharacter()
+
+	local character = player.Character
+
+	if not character then
+		return nil,nil,nil
+	end
+
+	local humanoid =
+		character:FindFirstChildOfClass("Humanoid")
+
+	local root =
+		character:FindFirstChild("HumanoidRootPart")
+
+	return character,humanoid,root
+
+end
+
+--========================================================--
+-- BURBUJA LTDC
+--========================================================--
+
+local bubble = Instance.new("TextButton")
+
+bubble.Name = "LTDC_Bubble"
+
+bubble.Size =
+	UDim2.new(0,60,0,60)
+
+bubble.Position =
+	UDim2.new(0.08,0,0.5,0)
+
+bubble.BackgroundColor3 =
+	Color3.fromRGB(0,0,0)
+
+bubble.BackgroundTransparency = 0
+
+bubble.Text = "ltdc"
+
+bubble.TextColor3 =
+	Color3.fromRGB(255,255,255)
+
+bubble.Font =
+	Enum.Font.GothamBold
+
+bubble.TextSize = 14
+
+bubble.AutoButtonColor = false
+
+bubble.Active = true
+
+bubble.Selectable = true
+
+bubble.ZIndex = 100
+
+bubble.Parent = gui
+
+
+local bubbleCorner =
+	Instance.new("UICorner")
+
+bubbleCorner.CornerRadius =
+	UDim.new(1,0)
+
+bubbleCorner.Parent = bubble
+
+
+local bubbleStroke =
+	Instance.new("UIStroke")
+
+bubbleStroke.Color =
+	Color3.fromRGB(60,60,60)
+
+bubbleStroke.Thickness = 2
+
+bubbleStroke.Parent = bubble
+
+--========================================================--
+-- MOVER BURBUJA
+--========================================================--
+
+local bubbleDragging = false
+local bubbleDragStart
+local bubbleStartPos
+local bubbleMoved = false
+
+
+bubble.InputBegan:Connect(function(input)
+
+	if input.UserInputType ==
+		Enum.UserInputType.Touch
+	or input.UserInputType ==
+		Enum.UserInputType.MouseButton1 then
+
+		bubbleDragging = true
+		bubbleMoved = false
+
+		bubbleDragStart =
+			input.Position
+
+		bubbleStartPos =
+			bubble.Position
+
+	end
+
+end)
+
+
+UIS.InputChanged:Connect(function(input)
+
+	if not bubbleDragging then
+		return
+	end
+
+	if input.UserInputType ==
+		Enum.UserInputType.Touch
+	or input.UserInputType ==
+		Enum.UserInputType.MouseMovement then
+
+		local delta =
+			input.Position -
+			bubbleDragStart
+
+		if math.abs(delta.X) > 8
+		or math.abs(delta.Y) > 8 then
+
+			bubbleMoved = true
+
+		end
+
+		bubble.Position =
+			UDim2.new(
+				bubbleStartPos.X.Scale,
+				bubbleStartPos.X.Offset + delta.X,
+				bubbleStartPos.Y.Scale,
+				bubbleStartPos.Y.Offset + delta.Y
+			)
+
+	end
+
+end)
+
+
+UIS.InputEnded:Connect(function(input)
+
+	if input.UserInputType ==
+		Enum.UserInputType.Touch
+	or input.UserInputType ==
+		Enum.UserInputType.MouseButton1 then
+
+		bubbleDragging = false
+
+	end
+
+end)
+
+--========================================================--
+-- MENU
+--========================================================--
+
+local menu = Instance.new("Frame")
+
+menu.Name = "LTDC_Menu"
+
+menu.Size =
+	UDim2.new(0,260,0,420)
+
+menu.Position =
+	UDim2.new(0,80,0,120)
+
+menu.BackgroundColor3 =
+	Color3.fromRGB(10,10,10)
+
+menu.Visible = false
+
+menu.Active = true
+
+menu.ZIndex = 50
+
+menu.Parent = gui
+
+
+local menuCorner =
+	Instance.new("UICorner")
+
+menuCorner.CornerRadius =
+	UDim.new(0,14)
+
+menuCorner.Parent = menu
+
+
+local menuStroke =
+	Instance.new("UIStroke")
+
+menuStroke.Color =
+	Color3.fromRGB(45,45,45)
+
+menuStroke.Thickness = 1
+
+menuStroke.Parent = menu
+
+--========================================================--
+-- HEADER
+--========================================================--
+
+local header = Instance.new("Frame")
+
+header.Size =
+	UDim2.new(1,0,0,40)
+
+header.BackgroundTransparency = 1
+
+header.Active = true
+
+header.ZIndex = 55
+
+header.Parent = menu
+
+
+local title =
+	Instance.new("TextLabel")
+
+title.Size =
+	UDim2.new(1,-50,1,0)
+
+title.Position =
+	UDim2.new(0,10,0,0)
+
+title.BackgroundTransparency = 1
+
+title.Text =
+	"Script Optimización V3"
+
+title.TextColor3 =
+	Color3.fromRGB(255,255,255)
+
+title.Font =
+	Enum.Font.GothamBold
+
+title.TextSize = 14
+
+title.TextXAlignment =
+	Enum.TextXAlignment.Left
+
+title.ZIndex = 56
+
+title.Parent = header
+
+--========================================================--
+-- BOTÓN CERRAR
+--========================================================--
+
+local close =
+	Instance.new("TextButton")
+
+close.Size =
+	UDim2.new(0,30,0,30)
+
+close.Position =
+	UDim2.new(1,-35,0.5,-15)
+
+close.BackgroundColor3 =
+	Color3.fromRGB(30,30,30)
+
+close.Text = "X"
+
+close.TextColor3 =
+	Color3.fromRGB(255,255,255)
+
+close.Font =
+	Enum.Font.GothamBold
+
+close.TextSize = 14
+
+close.AutoButtonColor = false
+
+close.Active = true
+
+close.ZIndex = 60
+
+close.Parent = header
+
+
+local closeCorner =
+	Instance.new("UICorner")
+
+closeCorner.CornerRadius =
+	UDim.new(1,0)
+
+closeCorner.Parent = close
+
+--========================================================--
+-- MOVER MENÚ
+--========================================================--
+
+local menuDragging = false
+local menuDragStart
+local menuStartPos
+
+
+header.InputBegan:Connect(function(input)
+
+	if input.UserInputType ==
+		Enum.UserInputType.Touch
+	or input.UserInputType ==
+		Enum.UserInputType.MouseButton1 then
+
+		menuDragging = true
+
+		menuDragStart =
+			input.Position
+
+		menuStartPos =
+			menu.Position
+
+	end
+
+end)
+
+
+UIS.InputChanged:Connect(function(input)
+
+	if not menuDragging then
+		return
+	end
+
+	if input.UserInputType ==
+		Enum.UserInputType.Touch
+	or input.UserInputType ==
+		Enum.UserInputType.MouseMovement then
+
+		local delta =
+			input.Position -
+			menuDragStart
+
+		menu.Position =
+			UDim2.new(
+				menuStartPos.X.Scale,
+				menuStartPos.X.Offset + delta.X,
+				menuStartPos.Y.Scale,
+				menuStartPos.Y.Offset + delta.Y
+			)
+
+	end
+
+end)
+
+
+UIS.InputEnded:Connect(function(input)
+
+	if input.UserInputType ==
+		Enum.UserInputType.Touch
+	or input.UserInputType ==
+		Enum.UserInputType.MouseButton1 then
+
+		menuDragging = false
+
+	end
+
+end)
+
+--========================================================--
+-- CONTENEDOR
+--========================================================--
+
+local container =
+	Instance.new("Frame")
+
+container.Size =
+	UDim2.new(1,-20,1,-90)
+
+container.Position =
+	UDim2.new(0,10,0,45)
+
+container.BackgroundColor3 =
+	Color3.fromRGB(15,15,15)
+
+container.ZIndex = 51
+
+container.Parent = menu
+
+
+local containerCorner =
+	Instance.new("UICorner")
+
+containerCorner.CornerRadius =
+	UDim.new(0,10)
+
+containerCorner.Parent =
+	container
+
+
+local Scroll =
+	Instance.new("ScrollingFrame")
+
+Scroll.Size =
+	UDim2.new(1,-10,1,-10)
+
+Scroll.Position =
+	UDim2.new(0,5,0,5)
+
+Scroll.BackgroundTransparency = 1
+
+Scroll.BorderSizePixel = 0
+
+Scroll.ScrollBarThickness = 0
+
+Scroll.CanvasSize =
+	UDim2.new(0,0,0,0)
+
+Scroll.ZIndex = 52
+
+Scroll.Parent = container
+
+
+local layout =
+	Instance.new("UIListLayout")
+
+layout.Padding =
+	UDim.new(0,6)
+
+layout.SortOrder =
+	Enum.SortOrder.LayoutOrder
+
+layout.Parent = Scroll
+
+
+layout:GetPropertyChangedSignal(
+	"AbsoluteContentSize"
+):Connect(function()
+
+	Scroll.CanvasSize =
+		UDim2.new(
+			0,
+			0,
+			0,
+			layout.AbsoluteContentSize.Y + 15
+		)
+
+end)
+
+--========================================================--
+-- FOOTER
+--========================================================--
+
+local footer =
+	Instance.new("TextLabel")
+
+footer.Size =
+	UDim2.new(1,0,0,30)
+
+footer.Position =
+	UDim2.new(0,0,1,-30)
+
+footer.BackgroundTransparency = 1
+
+footer.Text =
+	"Script hecho por ltdc"
+
+footer.TextColor3 =
+	Color3.fromRGB(140,140,140)
+
+footer.Font =
+	Enum.Font.Gotham
+
+footer.TextSize = 12
+
+footer.ZIndex = 52
+
+footer.Parent = menu
+
+--========================================================--
+-- OPTIMIZACIÓN
+--========================================================--
+
+local function saveLighting()
+
+	if next(originalLighting) then
+		return
+	end
+
+	originalLighting.GlobalShadows =
+		Lighting.GlobalShadows
+
+	originalLighting.Brightness =
+		Lighting.Brightness
+
+	originalLighting.Ambient =
+		Lighting.Ambient
+
+	originalLighting.OutdoorAmbient =
+		Lighting.OutdoorAmbient
+
+	originalLighting.ClockTime =
+		Lighting.ClockTime
+
+	originalLighting.FogEnd =
+		Lighting.FogEnd
+
+	pcall(function()
+
+		originalLighting.Technology =
+			Lighting.Technology
+
+	end)
+
+end
+
+
+local function enableOptimization()
+
+	saveLighting()
+
+	safeSet(
+		Lighting,
+		"GlobalShadows",
+		false
+	)
+
+	safeSet(
+		Lighting,
+		"FogEnd",
+		100000
+	)
+
+	safeSet(
+		Lighting,
+		"ClockTime",
+		13
+	)
+
+	safeSet(
+		Lighting,
+		"Ambient",
+		Color3.fromRGB(70,70,70)
+	)
+
+	safeSet(
+		Lighting,
+		"OutdoorAmbient",
+		Color3.fromRGB(70,70,70)
+	)
+
+	pcall(function()
+
+		Lighting.Technology =
+			Enum.Technology.Compatibility
+
+	end)
+
+	pcall(function()
+
+		settings().Rendering.QualityLevel =
+			Enum.QualityLevel.Level01
+
+	end)
+
+	for _,obj in ipairs(
+		Lighting:GetDescendants()
+	) do
+
+		if obj:IsA("BloomEffect")
+		or obj:IsA("BlurEffect")
+		or obj:IsA("ColorCorrectionEffect")
+		or obj:IsA("DepthOfFieldEffect")
+		or obj:IsA("SunRaysEffect") then
+
+			if originalEffects[obj] == nil then
+
+				originalEffects[obj] =
+					obj.Enabled
+
+			end
+
+			obj.Enabled = false
+
+		end
+
+	end
+
+end
+
+
+local function disableOptimization()
+
+	for property,value in pairs(
+		originalLighting
+	) do
+
+		safeSet(
+			Lighting,
+			property,
+			value
+		)
+
+	end
+
+	for obj,value in pairs(
+		originalEffects
+	) do
+
+		if obj and obj.Parent then
+
+			safeSet(
+				obj,
+				"Enabled",
+				value
+			)
+
+		end
+
+	end
+
+end
+
+--========================================================--
+-- FPS / PING HUD
+--========================================================--
+
+local function createStatsGUI()
+
+	if fpsGui then
+		return
+	end
+
+	fpsGui =
+		Instance.new("ScreenGui")
+
+	fpsGui.Name =
+		"LTDC_STATS"
+
+	fpsGui.ResetOnSpawn = false
+
+	fpsGui.IgnoreGuiInset = true
+
+	fpsGui.DisplayOrder =
+		999998
+
+	fpsGui.ZIndexBehavior =
+		Enum.ZIndexBehavior.Sibling
+
+	fpsGui.Parent =
+		GUI_PARENT
+
+	--====================================================--
+	-- FPS
+	--====================================================--
+
+	fpsBox =
+		Instance.new("TextButton")
+
+	fpsBox.Size =
+		UDim2.new(0,105,0,28)
+
+	fpsBox.Position =
+		UDim2.new(1,-115,0,10)
+
+	fpsBox.BackgroundColor3 =
+		Color3.fromRGB(0,0,0)
+
+	fpsBox.BackgroundTransparency =
+		0.28
+
+	fpsBox.Text =
+		"FPS  ..."
+
+	fpsBox.TextColor3 =
+		Color3.fromRGB(255,255,255)
+
+	fpsBox.Font =
+		Enum.Font.GothamBold
+
+	fpsBox.TextSize = 12
+
+	fpsBox.AutoButtonColor = false
+
+	fpsBox.Active = true
+
+	fpsBox.Visible = false
+
+	fpsBox.ZIndex = 100
+
+	fpsBox.Parent = fpsGui
+
+
+	local fpsCorner =
+		Instance.new("UICorner")
+
+	fpsCorner.CornerRadius =
+		UDim.new(0,7)
+
+	fpsCorner.Parent = fpsBox
+
+	--====================================================--
+	-- PING
+	--====================================================--
+
+	pingBox =
+		Instance.new("TextButton")
+
+	pingBox.Size =
+		UDim2.new(0,105,0,28)
+
+	pingBox.Position =
+		UDim2.new(1,-115,0,43)
+
+	pingBox.BackgroundColor3 =
+		Color3.fromRGB(0,0,0)
+
+	pingBox.BackgroundTransparency =
+		0.28
+
+	pingBox.Text =
+		"PING  ..."
+
+	pingBox.TextColor3 =
+		Color3.fromRGB(255,255,255)
+
+	pingBox.Font =
+		Enum.Font.GothamBold
+
+	pingBox.TextSize = 12
+
+	pingBox.AutoButtonColor = false
+
+	pingBox.Active = true
+
+	pingBox.Visible = false
+
+	pingBox.ZIndex = 100
+
+	pingBox.Parent = fpsGui
+
+	local pingCorner =
+		Instance.new("UICorner")
+
+	pingCorner.CornerRadius =
+		UDim.new(0,7)
+
+	pingCorner.Parent = pingBox
+
+	--====================================================--
+	-- FPS DESDE EL HUD
+	--====================================================--
+
+	fpsBox.Activated:Connect(function()
+
+		if states["FPS"] then
+
+			states["FPS"] = false
+
+			if fpsConnection then
+
+				fpsConnection:Disconnect()
+				fpsConnection = nil
+
+			end
+
+			fpsBox.Visible = false
+
+		else
+
+			enableFPS()
+
+		end
+
+	end)
+
+	--====================================================--
+	-- PING DESDE EL HUD
+	--====================================================--
+
+	pingBox.Activated:Connect(function()
+
+		if states["Ping Monitor"] then
+
+			states["Ping Monitor"] = false
+
+			pingBox.Visible = false
+
+		else
+
+			enablePing()
+
+		end
+
+	end)
+
+end
+
+--========================================================--
+-- FPS
+--========================================================--
+
+function enableFPS()
+
+	createStatsGUI()
+
+	states["FPS"] = true
+
+	fpsBox.Visible = true
+
+	fpsBox.Text =
+		"FPS  ..."
+
+	frameCount = 0
+
+	lastFPSTime = tick()
+
+	if fpsConnection then
+		return
+	end
+
+	fpsConnection =
+		RunService.RenderStepped:Connect(
+			function()
+
+				if not states["FPS"] then
+					return
+				end
+
+				frameCount += 1
+
+				local now =
+					tick()
+
+				if now - lastFPSTime >= 0.5 then
+
+					currentFPS =
+						math.floor(
+							frameCount /
+							(now - lastFPSTime)
+						)
+
+					fpsBox.Text =
+						"FPS  "..currentFPS
+
+					frameCount = 0
+
+					lastFPSTime = now
+
+				end
+
+			end
+		)
+
+end
+
+--========================================================--
+-- DESACTIVAR FPS
+--========================================================--
+
+function disableFPS()
+
+	states["FPS"] = false
+
+	if fpsConnection then
+
+		fpsConnection:Disconnect()
+
+		fpsConnection = nil
+
+	end
+
+	if fpsBox then
+
+		fpsBox.Visible = false
+		fpsBox.Text = "FPS"
+
+	end
+
+end
+
+--========================================================--
+-- PING
+--========================================================--
+
+function enablePing()
+
+	createStatsGUI()
+
+	states["Ping Monitor"] = true
+
+	pingBox.Visible = true
+
+	pingBox.Text =
+		"PING  ..."
+
+	if pingThread then
+		return
+	end
+
+	pingThread =
+		task.spawn(function()
+
+			while states["Ping Monitor"] do
+
+				local ping = 0
+
+				pcall(function()
+
+					local network =
+						Stats.Network
+
+					local server =
+						network.ServerStatsItem
+
+					local dataPing =
+						server:FindFirstChild(
+							"Data Ping"
+						)
+
+					if dataPing then
+
+						ping =
+							math.floor(
+								dataPing:GetValue()
+							)
+
+					end
+
+				end)
+
+				pingBox.Text =
+					"PING  "..ping.." ms"
+
+				task.wait(1)
+
+			end
+
+			pingThread = nil
+
+		end)
+
+end
+
+--========================================================--
+-- DESACTIVAR PING
+--========================================================--
+
+function disablePing()
+
+	states["Ping Monitor"] = false
+
+	if pingBox then
+
+		pingBox.Visible = false
+		pingBox.Text = "PING"
+
+	end
+
+end
+
+--========================================================--
+-- PANTALLA
+--========================================================--
+
+local function enableScreen()
+
+	for _,obj in ipairs(
+		player.PlayerGui:GetChildren()
+	) do
+
+		if obj:IsA("ScreenGui")
+		and obj.Name ~= "LTDC_STATS" then
+
+			local scale =
+				obj:FindFirstChild(
+					"LTDC_UIScale"
+				)
+
+			if not scale then
+
+				scale =
+					Instance.new("UIScale")
+
+				scale.Name =
+					"LTDC_UIScale"
+
+				scale.Parent = obj
+
+			end
+
+			scale.Scale = 1.2
+
+			uiScales[obj] = scale
+
+		end
+
+	end
+
+end
+
+
+local function disableScreen()
+
+	for _,scale in pairs(uiScales) do
+
+		if scale and scale.Parent then
+
+			scale.Scale = 1
+
+		end
+
+	end
+
+	uiScales = {}
+
+end
+
+--========================================================--
+-- PRENDAS
+--========================================================--
+
+local function enableClothes()
+
+	for _,plr in ipairs(
+		Players:GetPlayers()
+	) do
+
+		if plr ~= player
+		and plr.Character then
+
+			for _,obj in ipairs(
+				plr.Character:GetChildren()
+			) do
+
+				if obj:IsA("Accessory")
+				or obj:IsA("Hat")
+				or obj:IsA("Shirt")
+				or obj:IsA("Pants")
+				or obj:IsA("ShirtGraphic") then
+
+					if hiddenClothes[obj] == nil then
+
+						hiddenClothes[obj] =
+							obj.Parent
+
+					end
+
+					obj.Parent = nil
+
+				end
+
+			end
+
+		end
+
+	end
+
+end
+
+
+local function disableClothes()
+
+	for obj,parent in pairs(
+		hiddenClothes
+	) do
+
+		if obj and parent then
+
+			pcall(function()
+
+				obj.Parent = parent
+
+			end)
+
+		end
+
+	end
+
+	hiddenClothes = {}
+
+end
+
+--========================================================--
+-- MEMORIA
+--========================================================--
+
+local memoryThread
+
+
+local function enableMemory()
+
+	if memoryThread then
+		return
+	end
+
+	memoryThread =
+		task.spawn(function()
+
+			while states["Memoria"] do
+
+				task.wait(15)
+
+				pcall(function()
+					collectgarbage("collect")
+				end)
+
+			end
+
+			memoryThread = nil
+
+		end)
+
+end
+
+
+local function disableMemory()
+
+	states["Memoria"] = false
+
+end
+
+--========================================================--
+-- AI OPTIMIZER
+--========================================================--
+
+local aiConnection
+
+
+local function enableAI()
+
+	if aiConnection then
+		return
+	end
+
+	aiConnection =
+		RunService.Heartbeat:Connect(
+			function()
+
+				if not states["AI Optimizer"] then
+					return
+				end
+
+			end
+		)
+
+end
+
+
+local function disableAI()
+
+	if aiConnection then
+
+		aiConnection:Disconnect()
+
+		aiConnection = nil
+
+	end
+
+end
+
+--========================================================--
+-- STATIC WORLD
+--========================================================--
+
+local function enableStaticWorld()
+
+	for _,obj in ipairs(
+		Workspace:GetDescendants()
+	) do
+
+		if obj:IsA("BasePart") then
+
+			safeSet(
+				obj,
+				"AssemblyLinearVelocity",
+				Vector3.zero
+			)
+
+			safeSet(
+				obj,
+				"AssemblyAngularVelocity",
+				Vector3.zero
+			)
+
+		end
+
+	end
+
+end
+
+
+local function disableStaticWorld()
+end
+
+--========================================================--
+-- PLAYER ONLY
+--========================================================--
+
+local function enablePlayerOnly()
+
+	hiddenWorld = {}
+
+	for _,obj in ipairs(
+		Workspace:GetDescendants()
+	) do
+
+		if obj:IsA("BasePart") then
+
+			local model =
+				obj:FindFirstAncestorOfClass(
+					"Model"
+				)
+
+			if model
+			and model ~= player.Character
+			and not model:FindFirstChildOfClass(
+				"Humanoid"
+			) then
+
+				hiddenWorld[obj] =
+					obj.Transparency
+
+				obj.Transparency = 1
+
+			end
+
+		end
+
+	end
+
+end
+
+
+local function disablePlayerOnly()
+
+	for obj,value in pairs(
+		hiddenWorld
+	) do
+
+		if obj and obj.Parent then
+
+			obj.Transparency = value
+
+		end
+
+	end
+
+	hiddenWorld = {}
+
+end
+
+--========================================================--
+-- MEMORY GUARD
+--========================================================--
+
+local memoryGuardConnection
+
+
+local function enableMemoryGuard()
+
+	if memoryGuardConnection then
+		return
+	end
+
+	memoryGuardConnection =
+		RunService.Heartbeat:Connect(
+			function()
+
+				if not states["Memory Guard"] then
+					return
+				end
+
+				local memory =
+					collectgarbage("count")
+
+				if memory > 300000 then
+
+					pcall(function()
+
+						collectgarbage("collect")
+
+					end)
+
+				end
+
+			end
+		)
+
+end
+
+
+local function disableMemoryGuard()
+
+	if memoryGuardConnection then
+
+		memoryGuardConnection:Disconnect()
+
+		memoryGuardConnection = nil
+
+	end
+
+end
+
+--========================================================--
+-- FUNCIONES SIMPLES
+--========================================================--
+
+local function simpleMessage(name,on)
+
+	if on then
+
+		print(
+			"LTDC: "..name.." activado"
+		)
+
+	else
+
+		print(
+			"LTDC: "..name.." desactivado"
+		)
+
+	end
+
+end
+
+
+local function enableStartupOptimizer()
+	simpleMessage("Startup Optimizer",true)
+end
+
+local function disableStartupOptimizer()
+	simpleMessage("Startup Optimizer",false)
+end
+
+local function enableBackgroundMode()
+	simpleMessage("Background Mode",true)
+end
+
+local function disableBackgroundMode()
+	simpleMessage("Background Mode",false)
+end
+
+local function enableConnectionManager()
+	simpleMessage("Connection Manager",true)
+end
+
+local function disableConnectionManager()
+	simpleMessage("Connection Manager",false)
+end
+
+local function enableInputOptimizer()
+	simpleMessage("Input Optimizer",true)
+end
+
+local function disableInputOptimizer()
+	simpleMessage("Input Optimizer",false)
+end
+
+local function enableCameraOptimizer()
+	simpleMessage("Camera Optimizer",true)
+end
+
+local function disableCameraOptimizer()
+	simpleMessage("Camera Optimizer",false)
+end
+
+local function enableNetStabilizer()
+	simpleMessage("Net Stabilizer",true)
+end
+
+local function disableNetStabilizer()
+	simpleMessage("Net Stabilizer",false)
+end
+
+local function enableDynamicSleep()
+	simpleMessage("Dynamic Sleep",true)
+end
+
+local function disableDynamicSleep()
+	simpleMessage("Dynamic Sleep",false)
+end
+
+--========================================================--
+-- CHARACTER OPTIMIZER
+--========================================================--
+
+local function optimizeCharacter(character)
+
+	if not character then
+		return
+	end
+
+	for _,obj in ipairs(
+		character:GetDescendants()
+	) do
+
+		if obj:IsA("ParticleEmitter")
+		or obj:IsA("Trail")
+		or obj:IsA("Beam") then
+
+			if characterEffects[obj] == nil then
+
+				characterEffects[obj] =
+					obj.Enabled
+
+			end
+
+			obj.Enabled = false
+
+		end
+
+	end
+
+end
+
+
+local function enableCharacterOptimizer()
+
+	if player.Character then
+
+		optimizeCharacter(
+			player.Character
+		)
+
+	end
+
+	disconnect(
+		"CharacterOptimizer"
+	)
+
+	connections["CharacterOptimizer"] =
+		player.CharacterAdded:Connect(
+			function(character)
+
+				task.wait(1)
+
+				if states[
+					"Character Optimizer"
+				] then
+
+					optimizeCharacter(
+						character
+					)
+
+				end
+
+			end
+		)
+
+end
+
+
+local function disableCharacterOptimizer()
+
+	disconnect(
+		"CharacterOptimizer"
+	)
+
+	for obj,value in pairs(
+		characterEffects
+	) do
+
+		if obj and obj.Parent then
+
+			obj.Enabled = value
+
+		end
+
+	end
+
+	characterEffects = {}
+
+end
+
+--========================================================--
+-- NPC OPTIMIZER
+--========================================================--
+
+local function isNPC(model)
+
+	if not model:IsA("Model") then
+		return false
+	end
+
+	local humanoid =
+		model:FindFirstChildOfClass(
+			"Humanoid"
+		)
+
+	if not humanoid then
+		return false
+	end
+
+	return Players:GetPlayerFromCharacter(
+		model
+	) == nil
+
+end
+
+
+local function optimizeNPC(model)
+
+	if not isNPC(model) then
+		return
+	end
+
+	for _,obj in ipairs(
+		model:GetDescendants()
+	) do
+
+		if obj:IsA("ParticleEmitter")
+		or obj:IsA("Trail")
+		or obj:IsA("Beam") then
+
+			if npcEffects[obj] == nil then
+
+				npcEffects[obj] =
+					obj.Enabled
+
+			end
+
+			obj.Enabled = false
+
+		end
+
+	end
+
+end
+
+
+local function enableNPCOptimizer()
+
+	for _,obj in ipairs(
+		Workspace:GetDescendants()
+	) do
+
+		if obj:IsA("Model")
+		and isNPC(obj) then
+
+			optimizeNPC(obj)
+
+		end
+
+	end
+
+end
+
+
+local function disableNPCOptimizer()
+
+	for obj,value in pairs(
+		npcEffects
+	) do
+
+		if obj and obj.Parent then
+
+			obj.Enabled = value
+
+		end
+
+	end
+
+	npcEffects = {}
+
+end
+
+--========================================================--
+-- AUDIO
+--========================================================--
+
+local function enableAudioOptimizer()
+
+	for _,obj in ipairs(
+		Workspace:GetDescendants()
+	) do
+
+		if obj:IsA("Sound") then
+
+			if audioObjects[obj] == nil then
+
+				audioObjects[obj] =
+					obj.Volume
+
+			end
+
+			if obj.Volume > 0.5 then
+
+				obj.Volume = 0.5
+
+			end
+
+		end
+
+	end
+
+end
+
+
+local function disableAudioOptimizer()
+
+	for obj,value in pairs(
+		audioObjects
+	) do
+
+		if obj and obj.Parent then
+
+			obj.Volume = value
+
+		end
+
+	end
+
+	audioObjects = {}
+
+end
+
+--========================================================--
+-- VEGETACIÓN
+--========================================================--
+
+local function enableVegetationOptimizer()
+
+	for _,obj in ipairs(
+		Workspace:GetDescendants()
+	) do
+
+		if obj:IsA("ParticleEmitter") then
+
+			if vegetationObjects[obj] == nil then
+
+				vegetationObjects[obj] =
+					obj.Enabled
+
+			end
+
+			obj.Enabled = false
+
+		end
+
+	end
+
+end
+
+
+local function disableVegetationOptimizer()
+
+	for obj,value in pairs(
+		vegetationObjects
+	) do
+
+		if obj and obj.Parent then
+
+			obj.Enabled = value
+
+		end
+
+	end
+
+	vegetationObjects = {}
+
+end
+
+--========================================================--
+-- STREAMING
+--========================================================--
+
+local function enableStreamingHelper()
+
+	local character,humanoid,root =
+		getCharacter()
+
+	if root then
+
+		pcall(function()
+
+			player:
+				RequestStreamAroundAsync(
+					root.Position
+				)
+
+		end)
+
+	end
+
+end
+
+
+local function disableStreamingHelper()
+end
+
+--========================================================--
+-- CREAR SWITCH
+--========================================================--
+
+local function createToggle(name,callback)
+
+	local button =
+		Instance.new("TextButton")
+
+	button.Name =
+		name.."_Toggle"
+
+	button.Size =
+		UDim2.new(1,-8,0,40)
+
+	button.BackgroundColor3 =
+		Color3.fromRGB(25,25,25)
+
+	button.Text = ""
+
+	button.AutoButtonColor = false
+
+	button.Active = true
+
+	button.ZIndex = 53
+
+	button.Parent = Scroll
+
+
+	local corner =
+		Instance.new("UICorner")
+
+	corner.CornerRadius =
+		UDim.new(0,9)
+
+	corner.Parent = button
+
+	--====================================================--
+	-- TEXTO
+	--====================================================--
+
+	local label =
+		Instance.new("TextLabel")
+
+	label.Size =
+		UDim2.new(1,-70,1,0)
+
+	label.Position =
+		UDim2.new(0,12,0,0)
+
+	label.BackgroundTransparency = 1
+
+	label.Text = name
+
+	label.TextColor3 =
+		Color3.fromRGB(255,255,255)
+
+	label.Font =
+		Enum.Font.GothamBold
+
+	label.TextSize = 12
+
+	label.TextXAlignment =
+		Enum.TextXAlignment.Left
+
+	label.ZIndex = 54
+
+	label.Parent = button
+
+	--====================================================--
+	-- SWITCH
+	--====================================================--
+
+	local switch =
+		Instance.new("Frame")
+
+	switch.Size =
+		UDim2.new(0,48,0,24)
+
+	switch.Position =
+		UDim2.new(1,-58,0.5,-12)
+
+	switch.BackgroundColor3 =
+		Color3.fromRGB(190,45,45)
+
+	switch.ZIndex = 55
+
+	switch.Parent = button
+
+
+	local switchCorner =
+		Instance.new("UICorner")
+
+	switchCorner.CornerRadius =
+		UDim.new(1,0)
+
+	switchCorner.Parent = switch
+
+	--====================================================--
+	-- CÍRCULO
+	--====================================================--
+
+	local knob =
+		Instance.new("Frame")
+
+	knob.Size =
+		UDim2.new(0,18,0,18)
+
+	knob.Position =
+		UDim2.new(0,5,0.5,-9)
+
+	knob.BackgroundColor3 =
+		Color3.fromRGB(255,255,255)
+
+	knob.ZIndex = 56
+
+	knob.Parent = switch
+
+
+	local knobCorner =
+		Instance.new("UICorner")
+
+	knobCorner.CornerRadius =
+		UDim.new(1,0)
+
+	knobCorner.Parent = knob
+
+	--====================================================--
+	-- GUARDAR
+	--====================================================--
+
+	states[name] = false
+
+	toggleButtons[name] = {
+		button = button,
+		switch = switch,
+		knob = knob
+	}
+
+	toggleCallbacks[name] = callback
+
+end
+
+--========================================================--
+-- CAMBIAR SWITCH
+--========================================================--
+
+local function setToggle(name,enabled)
+
+	states[name] = enabled
+
+	local data =
+		toggleButtons[name]
+
+	if data then
+
+		if enabled then
+
+			data.switch.BackgroundColor3 =
+				Color3.fromRGB(
+					30,180,80
+				)
+
+			data.knob.Position =
+				UDim2.new(
+					1,-23,0.5,-9
+				)
+
+		else
+
+			data.switch.BackgroundColor3 =
+				Color3.fromRGB(
+					190,45,45
+				)
+
+			data.knob.Position =
+				UDim2.new(
+					0,5,0.5,-9
+				)
+
+		end
+
+	end
+
+	if toggleCallbacks[name] then
+
+		pcall(function()
+
+			toggleCallbacks[name](enabled)
+
+		end)
+
+	end
+
+end
+
+--========================================================--
+-- CREAR TODAS LAS OPCIONES
+--========================================================--
+
+local options = {
+
+	"Optimización",
+	"FPS",
+	"Pantalla",
+	"Prendas",
+	"Memoria",
+	"AI Optimizer",
+	"Static World",
+	"Player Only",
+	"Memory Guard",
+	"Net Stabilizer",
+	"Dynamic Sleep",
+	"Startup Optimizer",
+	"Background Mode",
+	"Connection Manager",
+	"Character Optimizer",
+	"NPC Optimizer",
+	"Input Optimizer",
+	"Audio Optimizer",
+	"Camera Optimizer",
+	"Vegetation Optimizer",
+	"Streaming Helper",
+	"Ping Monitor"
+
+}
+
+--========================================================--
+-- ALL OPTIONS
+--========================================================--
+
+local allButton =
+	Instance.new("TextButton")
+
+allButton.Size =
+	UDim2.new(1,-8,0,45)
+
+allButton.BackgroundColor3 =
+	Color3.fromRGB(20,20,20)
+
+allButton.Text = ""
+
+allButton.AutoButtonColor = false
+
+allButton.Active = true
+
+allButton.ZIndex = 54
+
+allButton.Parent = Scroll
+
+
+local allCorner =
+	Instance.new("UICorner")
+
+allCorner.CornerRadius =
+	UDim.new(0,9)
+
+allCorner.Parent = allButton
+
+
+local allLabel =
+	Instance.new("TextLabel")
+
+allLabel.Size =
+	UDim2.new(1,-70,1,0)
+
+allLabel.Position =
+	UDim2.new(0,12,0,0)
+
+allLabel.BackgroundTransparency = 1
+
+allLabel.Text =
+	"⚡ ALL OPTIONS"
+
+allLabel.TextColor3 =
+	Color3.fromRGB(255,255,255)
+
+allLabel.Font =
+	Enum.Font.GothamBold
+
+allLabel.TextSize = 13
+
+allLabel.TextXAlignment =
+	Enum.TextXAlignment.Left
+
+allLabel.ZIndex = 55
+
+allLabel.Parent = allButton
+
+
+local allSwitch =
+	Instance.new("Frame")
+
+allSwitch.Size =
+	UDim2.new(0,48,0,24)
+
+allSwitch.Position =
+	UDim2.new(1,-58,0.5,-12)
+
+allSwitch.BackgroundColor3 =
+	Color3.fromRGB(190,45,45)
+
+allSwitch.ZIndex = 55
+
+allSwitch.Parent = allButton
+
+
+local allSwitchCorner =
+	Instance.new("UICorner")
+
+allSwitchCorner.CornerRadius =
+	UDim.new(1,0)
+
+allSwitchCorner.Parent =
+	allSwitch
+
+
+local allKnob =
+	Instance.new("Frame")
+
+allKnob.Size =
+	UDim2.new(0,18,0,18)
+
+allKnob.Position =
+	UDim2.new(0,5,0.5,-9)
+
+allKnob.BackgroundColor3 =
+	Color3.fromRGB(255,255,255)
+
+allKnob.ZIndex = 56
+
+allKnob.Parent = allSwitch
+
+
+local allKnobCorner =
+	Instance.new("UICorner")
+
+allKnobCorner.CornerRadius =
+	UDim.new(1,0)
+
+allKnobCorner.Parent =
+	allKnob
+
+--========================================================--
+-- ALL OPTIONS
+--========================================================--
+
+local allControlled = {
+
+	"Optimización",
+	"Pantalla",
+	"Prendas",
+	"Memoria",
+	"AI Optimizer",
+	"Static World",
+	"Player Only",
+	"Memory Guard",
+	"Net Stabilizer",
+	"Dynamic Sleep",
+	"Startup Optimizer",
+	"Background Mode",
+	"Connection Manager",
+	"Character Optimizer",
+	"NPC Optimizer",
+	"Input Optimizer",
+	"Audio Optimizer",
+	"Camera Optimizer",
+	"Vegetation Optimizer",
+	"Streaming Helper"
+
+}
+
+
+allButton.Activated:Connect(function()
+
+	allOptionsEnabled =
+		not allOptionsEnabled
+
+	for _,name in ipairs(
+		allControlled
+	) do
+
+		setToggle(
+			name,
+			allOptionsEnabled
+		)
+
+	end
+
+	if allOptionsEnabled then
+
+		allSwitch.BackgroundColor3 =
+			Color3.fromRGB(
+				30,180,80
+			)
+
+		allKnob.Position =
+			UDim2.new(
+				1,-23,0.5,-9
+			)
+
+	else
+
+		allSwitch.BackgroundColor3 =
+			Color3.fromRGB(
+				190,45,45
+			)
+
+		allKnob.Position =
+			UDim2.new(
+				0,5,0.5,-9
+			)
+
+	end
+
+end)
+
+--========================================================--
+-- FUNCIONES DE OPCIONES
+--========================================================--
+
+local callbacks = {
+
+	["Optimización"] = function(on)
+		if on then
+			enableOptimization()
+		else
+			disableOptimization()
+		end
+	end,
+
+	["FPS"] = function(on)
+		if on then
+			enableFPS()
+		else
+			disableFPS()
+		end
+	end,
+
+	["Pantalla"] = function(on)
+		if on then
+			enableScreen()
+		else
+			disableScreen()
+		end
+	end,
+
+	["Prendas"] = function(on)
+		if on then
+			enableClothes()
+		else
+			disableClothes()
+		end
+	end,
+
+	["Memoria"] = function(on)
+		if on then
+			enableMemory()
+		else
+			disableMemory()
+		end
+	end,
+
+	["AI Optimizer"] = function(on)
+		if on then
+			enableAI()
+		else
+			disableAI()
+		end
+	end,
+
+	["Static World"] = function(on)
+		if on then
+			enableStaticWorld()
+		else
+			disableStaticWorld()
+		end
+	end,
+
+	["Player Only"] = function(on)
+		if on then
+			enablePlayerOnly()
+		else
+			disablePlayerOnly()
+		end
+	end,
+
+	["Memory Guard"] = function(on)
+		if on then
+			enableMemoryGuard()
+		else
+			disableMemoryGuard()
+		end
+	end,
+
+	["Net Stabilizer"] = function(on)
+		if on then
+			enableNetStabilizer()
+		else
+			disableNetStabilizer()
+		end
+	end,
+
+	["Dynamic Sleep"] = function(on)
+		if on then
+			enableDynamicSleep()
+		else
+			disableDynamicSleep()
+		end
+	end,
+
+	["Startup Optimizer"] = function(on)
+		if on then
+			enableStartupOptimizer()
+		else
+			disableStartupOptimizer()
+		end
+	end,
+
+	["Background Mode"] = function(on)
+		if on then
+			enableBackgroundMode()
+		else
+			disableBackgroundMode()
+		end
+	end,
+
+	["Connection Manager"] = function(on)
+		if on then
+			enableConnectionManager()
+		else
+			disableConnectionManager()
+		end
+	end,
+
+	["Character Optimizer"] = function(on)
+		if on then
+			enableCharacterOptimizer()
+		else
+			disableCharacterOptimizer()
+		end
+	end,
+
+	["NPC Optimizer"] = function(on)
+		if on then
+			enableNPCOptimizer()
+		else
+			disableNPCOptimizer()
+		end
+	end,
+
+	["Input Optimizer"] = function(on)
+		if on then
+			enableInputOptimizer()
+		else
+			disableInputOptimizer()
+		end
+	end,
+
+	["Audio Optimizer"] = function(on)
+		if on then
+			enableAudioOptimizer()
+		else
+			disableAudioOptimizer()
+		end
+	end,
+
+	["Camera Optimizer"] = function(on)
+		if on then
+			enableCameraOptimizer()
+		else
+			disableCameraOptimizer()
+		end
+	end,
+
+	["Vegetation Optimizer"] = function(on)
+		if on then
+			enableVegetationOptimizer()
+		else
+			disableVegetationOptimizer()
+		end
+	end,
+
+	["Streaming Helper"] = function(on)
+		if on then
+			enableStreamingHelper()
+		else
+			disableStreamingHelper()
+		end
+	end,
+
+	["Ping Monitor"] = function(on)
+		if on then
+			enablePing()
+		else
+			disablePing()
+		end
+	end
+
+}
+
+--========================================================--
+-- CREAR BOTONES
+--========================================================--
+
+for _,name in ipairs(options) do
+
+	createToggle(
+		name,
+		callbacks[name]
+	)
+
+end
+
+--========================================================--
+-- EVENTO DE LOS SWITCHES
+--========================================================--
+
+for _,name in ipairs(options) do
+
+	local data =
+		toggleButtons[name]
+
+	if data then
+
+		data.button.Activated:Connect(
+			function()
+
+				setToggle(
+					name,
+					not states[name]
+				)
+
+			end
+		)
+
+	end
+
+end
+
+--========================================================--
+-- ABRIR BURBUJA
+--========================================================--
+
+bubble.Activated:Connect(function()
+
+	if bubbleMoved then
+
+		bubbleMoved = false
+
+		return
+
+	end
+
+	bubble.Visible = false
+
+	menu.Visible = true
+
+	menu.Size =
+		UDim2.new(0,0,0,0)
+
+	local tween =
+		TweenService:Create(
+
+			menu,
+
+			TweenInfo.new(
+				0.25,
+				Enum.EasingStyle.Quad,
+				Enum.EasingDirection.Out
+			),
+
+			{
+				Size =
+					UDim2.new(
+						0,260,0,420
+					)
+			}
+
+		)
+
+	tween:Play()
+
+end)
+
+--========================================================--
+-- CERRAR
+--========================================================--
+
+close.Activated:Connect(function()
+
+	local tween =
+		TweenService:Create(
+
+			menu,
+
+			TweenInfo.new(
+				0.20,
+				Enum.EasingStyle.Quad,
+				Enum.EasingDirection.In
+			),
+
+			{
+				Size =
+					UDim2.new(
+						0,0,0,0
+					)
+			}
+
+		)
+
+	tween:Play()
+
+	tween.Completed:Connect(function()
+
+		menu.Visible = false
+
+		bubble.Visible = true
+
+	end)
+
+end)
+
+--========================================================--
+-- RESPAWN
+--========================================================--
+
+player.CharacterAdded:Connect(
+	function(character)
+
+		task.wait(1)
+
+		if states[
+			"Character Optimizer"
+		] then
+
+			optimizeCharacter(
+				character
+			)
+
+		end
+
+		if states["Player Only"] then
+
+			task.wait(0.5)
+
+			enablePlayerOnly()
+
+		end
+
+	end
+)
+
+--========================================================--
+-- FINAL
+--========================================================--
+
+print("========================================")
+print("       LTDC FLOAT UI V3 FIX")
+print("========================================")
+print("BURBUJA: OK")
+print("MENU MOVIBLE: OK")
+print("SWITCH ROJO/VERDE: OK")
+print("FPS INMEDIATO: OK")
+print("PING INMEDIATO: OK")
+print("ALL OPTIONS: OK")
+print("========================================")
