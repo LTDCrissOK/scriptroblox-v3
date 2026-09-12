@@ -1,0 +1,1207 @@
+--========================================================--
+--                 LTDC FLOAT UI
+--                 STABLE VERSION
+--========================================================--
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+local Stats = game:GetService("Stats")
+
+local Player = Players.LocalPlayer
+
+if not Player then
+	return
+end
+
+--========================================================--
+-- GUI
+--========================================================--
+
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+pcall(function()
+	local old = PlayerGui:FindFirstChild("LTDC_FLOAT_UI")
+	if old then
+		old:Destroy()
+	end
+end)
+
+pcall(function()
+	local old = PlayerGui:FindFirstChild("LTDC_STATS_UI")
+	if old then
+		old:Destroy()
+	end
+end)
+
+local GUI = Instance.new("ScreenGui")
+GUI.Name = "LTDC_FLOAT_UI"
+GUI.ResetOnSpawn = false
+GUI.IgnoreGuiInset = true
+GUI.DisplayOrder = 999999
+GUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+GUI.Parent = PlayerGui
+
+--========================================================--
+-- ESTADOS
+--========================================================--
+
+local State = {}
+
+local ToggleObjects = {}
+
+local OriginalLighting = {}
+local OriginalEffects = {}
+
+local HiddenClothes = {}
+local HiddenWorld = {}
+
+local CharacterEffects = {}
+local NPCEffects = {}
+
+local AudioObjects = {}
+local VegetationObjects = {}
+
+local FPSConnection = nil
+local PingThread = nil
+
+local FPSGui = nil
+local FPSBox = nil
+local PingBox = nil
+
+local FrameCount = 0
+local LastFPSTime = os.clock()
+
+local AllEnabled = false
+
+--========================================================--
+-- FUNCIONES
+--========================================================--
+
+local function SafeSet(object,property,value)
+	pcall(function()
+		object[property] = value
+	end)
+end
+
+--========================================================--
+-- BURBUJA
+--========================================================--
+
+local Bubble = Instance.new("TextButton")
+
+Bubble.Name = "LTDC_BUBBLE"
+Bubble.Size = UDim2.fromOffset(60,60)
+Bubble.Position = UDim2.new(0,25,0.5,-30)
+
+Bubble.BackgroundColor3 = Color3.fromRGB(0,0,0)
+Bubble.BackgroundTransparency = 0
+
+Bubble.Text = "ltdc"
+Bubble.TextColor3 = Color3.fromRGB(255,255,255)
+Bubble.TextSize = 14
+Bubble.Font = Enum.Font.GothamBold
+
+Bubble.AutoButtonColor = false
+Bubble.Active = true
+Bubble.ZIndex = 1000
+
+Bubble.Parent = GUI
+
+local BubbleCorner = Instance.new("UICorner")
+BubbleCorner.CornerRadius = UDim.new(1,0)
+BubbleCorner.Parent = Bubble
+
+local BubbleStroke = Instance.new("UIStroke")
+BubbleStroke.Color = Color3.fromRGB(60,60,60)
+BubbleStroke.Thickness = 2
+BubbleStroke.Parent = Bubble
+
+--========================================================--
+-- ARRASTRAR BURBUJA
+--========================================================--
+
+local BubbleDragging = false
+local BubbleMoved = false
+local BubbleStart = nil
+local BubbleStartPosition = nil
+
+Bubble.InputBegan:Connect(function(Input)
+
+	if Input.UserInputType == Enum.UserInputType.Touch
+	or Input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+		BubbleDragging = true
+		BubbleMoved = false
+
+		BubbleStart = Input.Position
+		BubbleStartPosition = Bubble.Position
+
+	end
+
+end)
+
+UIS.InputChanged:Connect(function(Input)
+
+	if not BubbleDragging then
+		return
+	end
+
+	if Input.UserInputType == Enum.UserInputType.Touch
+	or Input.UserInputType == Enum.UserInputType.MouseMovement then
+
+		local Delta = Input.Position - BubbleStart
+
+		if math.abs(Delta.X) > 8
+		or math.abs(Delta.Y) > 8 then
+
+			BubbleMoved = true
+
+		end
+
+		Bubble.Position = UDim2.new(
+			BubbleStartPosition.X.Scale,
+			BubbleStartPosition.X.Offset + Delta.X,
+			BubbleStartPosition.Y.Scale,
+			BubbleStartPosition.Y.Offset + Delta.Y
+		)
+
+	end
+
+end)
+
+UIS.InputEnded:Connect(function(Input)
+
+	if Input.UserInputType == Enum.UserInputType.Touch
+	or Input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+		BubbleDragging = false
+
+	end
+
+end)
+
+--========================================================--
+-- MENU
+--========================================================--
+
+local Menu = Instance.new("Frame")
+
+Menu.Name = "LTDC_MENU"
+Menu.Size = UDim2.fromOffset(270,430)
+Menu.Position = UDim2.new(0,90,0.5,-215)
+
+Menu.BackgroundColor3 = Color3.fromRGB(10,10,10)
+Menu.BackgroundTransparency = 0
+
+Menu.Visible = false
+Menu.Active = true
+Menu.ZIndex = 500
+
+Menu.Parent = GUI
+
+local MenuCorner = Instance.new("UICorner")
+MenuCorner.CornerRadius = UDim.new(0,14)
+MenuCorner.Parent = Menu
+
+local MenuStroke = Instance.new("UIStroke")
+MenuStroke.Color = Color3.fromRGB(50,50,50)
+MenuStroke.Thickness = 1
+MenuStroke.Parent = Menu
+
+--========================================================--
+-- HEADER
+--========================================================--
+
+local Header = Instance.new("Frame")
+
+Header.Size = UDim2.new(1,0,0,45)
+Header.BackgroundTransparency = 1
+Header.Active = true
+Header.ZIndex = 501
+Header.Parent = Menu
+
+local Title = Instance.new("TextLabel")
+
+Title.Size = UDim2.new(1,-50,1,0)
+Title.Position = UDim2.fromOffset(12,0)
+
+Title.BackgroundTransparency = 1
+
+Title.Text = "LTDC OPTIMIZER"
+
+Title.TextColor3 = Color3.fromRGB(255,255,255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 14
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+Title.ZIndex = 502
+Title.Parent = Header
+
+local Close = Instance.new("TextButton")
+
+Close.Size = UDim2.fromOffset(30,30)
+Close.Position = UDim2.new(1,-38,0,7)
+
+Close.BackgroundColor3 = Color3.fromRGB(30,30,30)
+
+Close.Text = "X"
+Close.TextColor3 = Color3.fromRGB(255,255,255)
+
+Close.Font = Enum.Font.GothamBold
+Close.TextSize = 13
+
+Close.AutoButtonColor = false
+Close.ZIndex = 503
+Close.Parent = Header
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(1,0)
+CloseCorner.Parent = Close
+
+--========================================================--
+-- MOVER MENU
+--========================================================--
+
+local MenuDragging = false
+local MenuStart = nil
+local MenuStartPosition = nil
+
+Header.InputBegan:Connect(function(Input)
+
+	if Input.UserInputType == Enum.UserInputType.Touch
+	or Input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+		MenuDragging = true
+
+		MenuStart = Input.Position
+		MenuStartPosition = Menu.Position
+
+	end
+
+end)
+
+UIS.InputChanged:Connect(function(Input)
+
+	if not MenuDragging then
+		return
+	end
+
+	if Input.UserInputType == Enum.UserInputType.Touch
+	or Input.UserInputType == Enum.UserInputType.MouseMovement then
+
+		local Delta = Input.Position - MenuStart
+
+		Menu.Position = UDim2.new(
+			MenuStartPosition.X.Scale,
+			MenuStartPosition.X.Offset + Delta.X,
+			MenuStartPosition.Y.Scale,
+			MenuStartPosition.Y.Offset + Delta.Y
+		)
+
+	end
+
+end)
+
+UIS.InputEnded:Connect(function(Input)
+
+	if Input.UserInputType == Enum.UserInputType.Touch
+	or Input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+		MenuDragging = false
+
+	end
+
+end)
+
+--========================================================--
+-- CONTENEDOR
+--========================================================--
+
+local Container = Instance.new("Frame")
+
+Container.Size = UDim2.new(1,-20,1,-85)
+Container.Position = UDim2.fromOffset(10,48)
+
+Container.BackgroundColor3 = Color3.fromRGB(16,16,16)
+
+Container.ZIndex = 501
+Container.Parent = Menu
+
+local ContainerCorner = Instance.new("UICorner")
+ContainerCorner.CornerRadius = UDim.new(0,10)
+ContainerCorner.Parent = Container
+
+local Scroll = Instance.new("ScrollingFrame")
+
+Scroll.Size = UDim2.new(1,-10,1,-10)
+Scroll.Position = UDim2.fromOffset(5,5)
+
+Scroll.BackgroundTransparency = 1
+Scroll.BorderSizePixel = 0
+
+Scroll.ScrollBarThickness = 0
+
+Scroll.CanvasSize = UDim2.new(0,0,0,0)
+
+Scroll.ZIndex = 502
+Scroll.Parent = Container
+
+local Layout = Instance.new("UIListLayout")
+
+Layout.Padding = UDim.new(0,6)
+Layout.SortOrder = Enum.SortOrder.LayoutOrder
+Layout.Parent = Scroll
+
+Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+
+	Scroll.CanvasSize = UDim2.new(
+		0,
+		0,
+		0,
+		Layout.AbsoluteContentSize.Y + 15
+	)
+
+end)
+
+--========================================================--
+-- FOOTER
+--========================================================--
+
+local Footer = Instance.new("TextLabel")
+
+Footer.Size = UDim2.new(1,0,0,30)
+Footer.Position = UDim2.new(0,0,1,-30)
+
+Footer.BackgroundTransparency = 1
+
+Footer.Text = "Script hecho por ltdc"
+
+Footer.TextColor3 = Color3.fromRGB(130,130,130)
+
+Footer.Font = Enum.Font.Gotham
+Footer.TextSize = 11
+
+Footer.ZIndex = 502
+Footer.Parent = Menu
+
+--========================================================--
+-- FPS + PING
+--========================================================--
+
+local function CreateStats()
+
+	if FPSGui then
+		return
+	end
+
+	FPSGui = Instance.new("ScreenGui")
+
+	FPSGui.Name = "LTDC_STATS_UI"
+	FPSGui.ResetOnSpawn = false
+	FPSGui.IgnoreGuiInset = true
+	FPSGui.DisplayOrder = 999998
+
+	FPSGui.Parent = PlayerGui
+
+	-- FPS
+
+	FPSBox = Instance.new("TextButton")
+
+	FPSBox.Size = UDim2.fromOffset(105,28)
+	FPSBox.Position = UDim2.new(1,-115,0,10)
+
+	FPSBox.BackgroundColor3 = Color3.fromRGB(0,0,0)
+	FPSBox.BackgroundTransparency = 0.28
+
+	FPSBox.Text = "FPS  ..."
+	FPSBox.TextColor3 = Color3.fromRGB(255,255,255)
+
+	FPSBox.Font = Enum.Font.GothamBold
+	FPSBox.TextSize = 12
+
+	FPSBox.AutoButtonColor = false
+	FPSBox.Visible = false
+	FPSBox.ZIndex = 1000
+
+	FPSBox.Parent = FPSGui
+
+	local FC = Instance.new("UICorner")
+	FC.CornerRadius = UDim.new(0,7)
+	FC.Parent = FPSBox
+
+	-- PING
+
+	PingBox = Instance.new("TextButton")
+
+	PingBox.Size = UDim2.fromOffset(105,28)
+	PingBox.Position = UDim2.new(1,-115,0,43)
+
+	PingBox.BackgroundColor3 = Color3.fromRGB(0,0,0)
+	PingBox.BackgroundTransparency = 0.28
+
+	PingBox.Text = "PING  ..."
+	PingBox.TextColor3 = Color3.fromRGB(255,255,255)
+
+	PingBox.Font = Enum.Font.GothamBold
+	PingBox.TextSize = 12
+
+	PingBox.AutoButtonColor = false
+	PingBox.Visible = false
+	PingBox.ZIndex = 1000
+
+	PingBox.Parent = FPSGui
+
+	local PC = Instance.new("UICorner")
+	PC.CornerRadius = UDim.new(0,7)
+	PC.Parent = PingBox
+
+end
+
+--========================================================--
+-- FPS
+--========================================================--
+
+local function EnableFPS()
+
+	CreateStats()
+
+	State.FPS = true
+
+	FPSBox.Visible = true
+	FPSBox.Text = "FPS  ..."
+
+	FrameCount = 0
+	LastFPSTime = os.clock()
+
+	if FPSConnection then
+		return
+	end
+
+	FPSConnection = RunService.RenderStepped:Connect(function()
+
+		if not State.FPS then
+			return
+		end
+
+		FrameCount += 1
+
+		local Now = os.clock()
+
+		if Now - LastFPSTime >= 0.5 then
+
+			local FPS =
+				math.floor(
+					FrameCount /
+					(Now - LastFPSTime)
+				)
+
+			FPSBox.Text = "FPS  "..FPS
+
+			FrameCount = 0
+			LastFPSTime = Now
+
+		end
+
+	end)
+
+end
+
+local function DisableFPS()
+
+	State.FPS = false
+
+	if FPSConnection then
+
+		FPSConnection:Disconnect()
+		FPSConnection = nil
+
+	end
+
+	if FPSBox then
+
+		FPSBox.Visible = false
+
+	end
+
+end
+
+--========================================================--
+-- PING
+--========================================================--
+
+local function GetPing()
+
+	local Ping = 0
+
+	pcall(function()
+
+		local Network =
+			Stats.Network
+
+		local Server =
+			Network.ServerStatsItem
+
+		local Item =
+			Server:FindFirstChild("Data Ping")
+
+		if Item then
+
+			Ping =
+				math.floor(
+					Item:GetValue()
+				)
+
+		end
+
+	end)
+
+	return Ping
+
+end
+
+local function EnablePing()
+
+	CreateStats()
+
+	State.Ping = true
+
+	PingBox.Visible = true
+	PingBox.Text = "PING  ..."
+
+	if PingThread then
+		return
+	end
+
+	PingThread = task.spawn(function()
+
+		while State.Ping do
+
+			local Ping = GetPing()
+
+			PingBox.Text =
+				"PING  "..Ping.." ms"
+
+			task.wait(1)
+
+		end
+
+		PingThread = nil
+
+	end)
+
+end
+
+local function DisablePing()
+
+	State.Ping = false
+
+	if PingBox then
+
+		PingBox.Visible = false
+
+	end
+
+end
+
+--========================================================--
+-- OPTIMIZACIÓN
+--========================================================--
+
+local function EnableOptimization()
+
+	if next(OriginalLighting) == nil then
+
+		OriginalLighting.GlobalShadows =
+			Lighting.GlobalShadows
+
+		OriginalLighting.Brightness =
+			Lighting.Brightness
+
+		OriginalLighting.Ambient =
+			Lighting.Ambient
+
+		OriginalLighting.OutdoorAmbient =
+			Lighting.OutdoorAmbient
+
+		OriginalLighting.FogEnd =
+			Lighting.FogEnd
+
+	end
+
+	SafeSet(
+		Lighting,
+		"GlobalShadows",
+		false
+	)
+
+	SafeSet(
+		Lighting,
+		"FogEnd",
+		100000
+	)
+
+	pcall(function()
+
+		settings().Rendering.QualityLevel =
+			Enum.QualityLevel.Level01
+
+	end)
+
+	for _,Object in ipairs(
+		Lighting:GetDescendants()
+	) do
+
+		if Object:IsA("BloomEffect")
+		or Object:IsA("BlurEffect")
+		or Object:IsA("ColorCorrectionEffect")
+		or Object:IsA("DepthOfFieldEffect")
+		or Object:IsA("SunRaysEffect") then
+
+			if OriginalEffects[Object] == nil then
+
+				OriginalEffects[Object] =
+					Object.Enabled
+
+			end
+
+			Object.Enabled = false
+
+		end
+
+	end
+
+end
+
+local function DisableOptimization()
+
+	for Property,Value in pairs(
+		OriginalLighting
+	) do
+
+		SafeSet(
+			Lighting,
+			Property,
+			Value
+		)
+
+	end
+
+	for Object,Value in pairs(
+		OriginalEffects
+	) do
+
+		if Object and Object.Parent then
+
+			SafeSet(
+				Object,
+				"Enabled",
+				Value
+			)
+
+		end
+
+	end
+
+end
+
+--========================================================--
+-- PANTALLA
+--========================================================--
+
+local function EnableScreen()
+
+	for _,Object in ipairs(
+		PlayerGui:GetChildren()
+	) do
+
+		if Object:IsA("ScreenGui")
+		and Object ~= GUI
+		and Object ~= FPSGui then
+
+			local Scale =
+				Object:FindFirstChild(
+					"LTDC_SCALE"
+				)
+
+			if not Scale then
+
+				Scale =
+					Instance.new("UIScale")
+
+				Scale.Name =
+					"LTDC_SCALE"
+
+				Scale.Parent =
+					Object
+
+			end
+
+			Scale.Scale = 1.2
+
+			uiScales[Object] =
+				Scale
+
+		end
+
+	end
+
+end
+
+local function DisableScreen()
+
+	for _,Scale in pairs(uiScales) do
+
+		if Scale and Scale.Parent then
+
+			Scale.Scale = 1
+
+		end
+
+	end
+
+	uiScales = {}
+
+end
+
+--========================================================--
+-- PRENDAS
+--========================================================--
+
+local function EnableClothes()
+
+	for _,OtherPlayer in ipairs(
+		Players:GetPlayers()
+	) do
+
+		if OtherPlayer ~= Player
+		and OtherPlayer.Character then
+
+			for _,Object in ipairs(
+				OtherPlayer.Character:GetChildren()
+			) do
+
+				if Object:IsA("Accessory")
+				or Object:IsA("Shirt")
+				or Object:IsA("Pants")
+				or Object:IsA("ShirtGraphic") then
+
+					HiddenClothes[Object] =
+						Object.Parent
+
+					Object.Parent = nil
+
+				end
+
+			end
+
+		end
+
+	end
+
+end
+
+local function DisableClothes()
+
+	for Object,Parent in pairs(
+		HiddenClothes
+	) do
+
+		if Object and Parent then
+
+			pcall(function()
+
+				Object.Parent = Parent
+
+			end)
+
+		end
+
+	end
+
+	HiddenClothes = {}
+
+end
+
+--========================================================--
+-- MEMORIA
+--========================================================--
+
+local function EnableMemory()
+
+	task.spawn(function()
+
+		while State.Memory do
+
+			task.wait(15)
+
+			pcall(function()
+
+				collectgarbage("collect")
+
+			end)
+
+		end
+
+	end)
+
+end
+
+local function DisableMemory()
+	State.Memory = false
+end
+
+--========================================================--
+-- EFECTOS DEL PERSONAJE
+--========================================================--
+
+local function OptimizeCharacter(Character)
+
+	if not Character then
+		return
+	end
+
+	for _,Object in ipairs(
+		Character:GetDescendants()
+	) do
+
+		if Object:IsA("ParticleEmitter")
+		or Object:IsA("Trail")
+		or Object:IsA("Beam") then
+
+			if CharacterEffects[Object] == nil then
+
+				CharacterEffects[Object] =
+					Object.Enabled
+
+			end
+
+			Object.Enabled = false
+
+		end
+
+	end
+
+end
+
+local function EnableCharacter()
+
+	if Player.Character then
+
+		OptimizeCharacter(
+			Player.Character
+		)
+
+	end
+
+end
+
+local function DisableCharacter()
+
+	for Object,Value in pairs(
+		CharacterEffects
+	) do
+
+		if Object and Object.Parent then
+
+			Object.Enabled = Value
+
+		end
+
+	end
+
+	CharacterEffects = {}
+
+end
+
+--========================================================--
+-- NPC
+--========================================================--
+
+local function EnableNPC()
+
+	for _,Object in ipairs(
+		Workspace:GetDescendants()
+	) do
+
+		if Object:IsA("ParticleEmitter")
+		or Object:IsA("Trail")
+		or Object:IsA("Beam") then
+
+			if NPCEffects[Object] == nil then
+
+				NPCEffects[Object] =
+					Object.Enabled
+
+			end
+
+			Object.Enabled = false
+
+		end
+
+	end
+
+end
+
+local function DisableNPC()
+
+	for Object,Value in pairs(
+		NPCEffects
+	) do
+
+		if Object and Object.Parent then
+
+			Object.Enabled = Value
+
+		end
+
+	end
+
+	NPCEffects = {}
+
+end
+
+--========================================================--
+-- AUDIO
+--========================================================--
+
+local function EnableAudio()
+
+	for _,Object in ipairs(
+		Workspace:GetDescendants()
+	) do
+
+		if Object:IsA("Sound") then
+
+			if AudioObjects[Object] == nil then
+
+				AudioObjects[Object] =
+					Object.Volume
+
+			end
+
+			if Object.Volume > 0.5 then
+
+				Object.Volume = 0.5
+
+			end
+
+		end
+
+	end
+
+end
+
+local function DisableAudio()
+
+	for Object,Value in pairs(
+		AudioObjects
+	) do
+
+		if Object and Object.Parent then
+
+			Object.Volume = Value
+
+		end
+
+	end
+
+	AudioObjects = {}
+
+end
+
+--========================================================--
+-- VEGETACIÓN
+--========================================================--
+
+local function EnableVegetation()
+
+	for _,Object in ipairs(
+		Workspace:GetDescendants()
+	) do
+
+		if Object:IsA("ParticleEmitter") then
+
+			if VegetationObjects[Object] == nil then
+
+				VegetationObjects[Object] =
+					Object.Enabled
+
+			end
+
+			Object.Enabled = false
+
+		end
+
+	end
+
+end
+
+local function DisableVegetation()
+
+	for Object,Value in pairs(
+		VegetationObjects
+	) do
+
+		if Object and Object.Parent then
+
+			Object.Enabled = Value
+
+		end
+
+	end
+
+	VegetationObjects = {}
+
+end
+
+--========================================================--
+-- SWITCH
+--========================================================--
+
+local function SetSwitch(Name,Enabled)
+
+	State[Name] = Enabled
+
+	local Object =
+		ToggleObjects[Name]
+
+	if not Object then
+		return
+	end
+
+	if Enabled then
+
+		Object.Switch.BackgroundColor3 =
+			Color3.fromRGB(35,180,80)
+
+		Object.Knob.Position =
+			UDim2.new(1,-23,0.5,-9)
+
+	else
+
+		Object.Switch.BackgroundColor3 =
+			Color3.fromRGB(190,45,45)
+
+		Object.Knob.Position =
+			UDim2.new(0,5,0.5,-9)
+
+	end
+
+	local Callback =
+		Object.Callback
+
+	if Callback then
+
+		pcall(function()
+
+			Callback(Enabled)
+
+		end)
+
+	end
+
+end
+
+local function CreateToggle(Name,Callback)
+
+	local Button =
+		Instance.new("TextButton")
+
+	Button.Name =
+		Name.."_BUTTON"
+
+	Button.Size =
+		UDim2.new(1,-8,0,40)
+
+	Button.BackgroundColor3 =
+		Color3.fromRGB(25,25,25)
+
+	Button.Text = ""
+
+	Button.AutoButtonColor = false
+
+	Button.ZIndex = 503
+	Button.Parent = Scroll
+
+	local Corner =
+		Instance.new("UICorner")
+
+	Corner.CornerRadius =
+		UDim.new(0,9)
+
+	Corner.Parent = Button
+
+	-- TEXTO
+
+	local Label =
+		Instance.new("TextLabel")
+
+	Label.Size =
+		UDim2.new(1,-70,1,0)
+
+	Label.Position =
+		UDim2.fromOffset(12,0)
+
+	Label.BackgroundTransparency = 1
+
+	Label.Text = Name
+
+	Label.TextColor3 =
+		Color3.fromRGB(255,255,255)
+
+	Label.Font =
+		Enum.Font.GothamBold
+
+	Label.TextSize = 12
+
+	Label.TextXAlignment =
+		Enum.TextXAlignment.Left
+
+	Label.ZIndex = 504
+	Label.Parent = Button
+
+	-- SWITCH
+
+	local Switch =
+		Instance.new("Frame")
+
+	Switch.Size =
+		UDim2.fromOffset(48,24)
+
+	Switch.Position =
+		UDim2.new(1,-58,0.5,-12)
+
+	Switch.BackgroundColor3 =
+		Color3.fromRGB(190,45,45)
+
+	Switch.ZIndex = 504
+	Switch.Parent = Button
+
+	local SwitchCorner =
+		Instance.new("UICorner")
+
+	SwitchCorner.CornerRadius =
+		UDim.new(1,0)
+
+	SwitchCorner.Parent = Switch
+
+	-- CÍRCULO
+
+	local Knob =
+		Instance.new("Frame")
+
+	Knob.Size =
+		UDim2.fromOffset(18,18)
+
+	Knob.Position =
+		UDim2.new(0,5,0.5,-9)
+
+	Knob.BackgroundColor3 =
+		Color3.fromRGB(255,255,255)
+
+	Knob.ZIndex = 505
+	Knob.Parent
